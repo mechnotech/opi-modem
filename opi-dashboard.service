@@ -1,0 +1,33 @@
+# ─── requirements.txt ────────────────────────────────────────────────────────
+# fastapi
+# uvicorn[standard]
+
+# ─── Установка на Orange Pi ───────────────────────────────────────────────────
+# pip3 install fastapi "uvicorn[standard]"
+# cp opi_dashboard.py /opt/opi_dashboard.py
+
+# ─── /etc/systemd/system/opi-dashboard.service ───────────────────────────────
+
+[Unit]
+Description=OPI Network Monitor Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt
+ExecStart=/opt/opi-dashboard-venv/bin/python /opt/opi_dashboard.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+
+# ─── Команды для активации ────────────────────────────────────────────────────
+# cp opi_dashboard.py /opt/
+# cp opi-dashboard.service /etc/systemd/system/
+# systemctl daemon-reload
+# systemctl enable opi-dashboard
+# systemctl start opi-dashboard
+# systemctl status opi-dashboard

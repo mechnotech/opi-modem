@@ -1,0 +1,11 @@
+# Секреты
+hostapd.conf
+*.secret
+
+# Шрифты (большие бинарники)
+static/*.woff2
+
+# Python
+__pycache__/
+*.pyc
+.env
