@@ -10,7 +10,10 @@
 
 <header>
   <div class="logo">OPI<span>/</span>MONITOR <span style="font-size:.7rem">v1.1</span></div>
-  <div><span id="status-dot"></span><span id="clock">--:--:--</span></div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <span><span id="status-dot"></span><span id="clock">--:--:--</span></span>
+    <button class="btn" style="padding:6px 14px;font-size:.65rem" onclick="doLogout()">&#x23CF; LOGOUT</button>
+  </div>
 </header>
 
 <div class="controls">

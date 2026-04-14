@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPI Monitor — Login</title>
+<link rel="stylesheet" href="/static/style.css?v=2">
+<style>
+  .login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-box {
+    width: 100%;
+    max-width: 360px;
+  }
+  .login-title {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    color: var(--accent);
+    letter-spacing: .15em;
+    margin-bottom: 28px;
+    text-align: center;
+  }
+  .login-title span { color: var(--dim); }
+  .login-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .login-label { font-family: var(--mono); font-size: .65rem; letter-spacing: .15em; color: var(--dim); text-transform: uppercase; }
+  .login-error {
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--danger);
+    min-height: 20px;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .btn-login {
+    width: 100%;
+    padding: 12px;
+    font-size: .8rem;
+    letter-spacing: .2em;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-box">
+    <div class="panel">
+      <div class="login-title">OPI<span>/</span>MONITOR</div>
+
+      <div class="login-field">
+        <label class="login-label" for="login">// Login</label>
+        <input type="text" id="login" class="form-input" autocomplete="username" autofocus>
+      </div>
+
+      <div class="login-field">
+        <label class="login-label" for="password">// Password</label>
+        <input type="password" id="password" class="form-input" autocomplete="current-password">
+      </div>
+
+      <div class="login-error" id="err"></div>
+
+      <button class="btn btn-login" id="btn-login" onclick="doLogin()">&#x25B6; ENTER</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+
+function doLogin() {
+  var login    = document.getElementById('login').value.trim();
+  var password = document.getElementById('password').value;
+  var errEl    = document.getElementById('err');
+  var btn      = document.getElementById('btn-login');
+
+  if (!login || !password) {
+    errEl.textContent = 'Enter login and password';
+    return;
+  }
+
+  btn.textContent = 'Checking...';
+  btn.disabled = true;
+  errEl.textContent = '';
+
+  fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({login: login, password: password})
+  })
+  .then(function(r) {
+    if (r.ok) return r.json();
+    throw new Error('auth');
+  })
+  .then(function(d) {
+    if (d.ok) {
+      window.location.href = '/';
+    }
+  })
+  .catch(function() {
+    errEl.textContent = 'Invalid login or password';
+    btn.textContent = '▶ ENTER';
+    btn.disabled = false;
+    document.getElementById('password').value = '';
+    document.getElementById('password').focus();
+  });
+}
+</script>
+</body>
+</html>

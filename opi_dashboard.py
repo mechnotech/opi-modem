@@ -8,16 +8,68 @@ import subprocess
 import re
 import time
 import os
+import json
+import secrets
+import hashlib
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-app = FastAPI(title="OPI Monitor")
+STATIC_DIR  = os.path.join(os.path.dirname(__file__), "static")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "opi-conf.json")
 
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+# ─── Config / Auth helpers ────────────────────────────────────────────────────
+
+def _init_config() -> dict:
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    salt       = secrets.token_hex(16)
+    pw_hash    = hashlib.pbkdf2_hmac("sha256", b"admin", salt.encode(), 100_000).hex()
+    config     = {
+        "login":         "admin",
+        "password_hash": f"{salt}:{pw_hash}",
+        "secret_key":    secrets.token_hex(32),
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+    return config
+
+CONFIG = _init_config()
+
+def check_password(password: str) -> bool:
+    cfg = json.load(open(CONFIG_FILE))
+    try:
+        salt, stored = cfg["password_hash"].split(":")
+    except ValueError:
+        return False
+    computed = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
+    return secrets.compare_digest(computed, stored)
+
+# ─── Auth middleware ───────────────────────────────────────────────────────────
+
+_PUBLIC = {"/login", "/api/login"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/static") or path in _PUBLIC:
+            return await call_next(request)
+        if not request.session.get("user"):
+            if path.startswith("/api/"):
+                return Response("Unauthorized", status_code=401)
+            return RedirectResponse("/login")
+        return await call_next(request)
+
+app = FastAPI(title="OPI Monitor")
+# SessionMiddleware must wrap AuthMiddleware → add Auth first, then Session
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=CONFIG["secret_key"], session_cookie="opi_session")
 
 # ─── ADB helpers ──────────────────────────────────────────────────────────────
 
@@ -209,6 +261,29 @@ def opi_reboot():
 @app.post("/api/opi/poweroff")
 def opi_poweroff():
     subprocess.Popen(["poweroff"]); return {"status":"ok"}
+
+# ─── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.get("/login")
+def login_page():
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+
+class LoginPayload(BaseModel):
+    login: str
+    password: str
+
+@app.post("/api/login")
+async def api_login(payload: LoginPayload, request: Request):
+    cfg = json.load(open(CONFIG_FILE))
+    if payload.login == cfg["login"] and check_password(payload.password):
+        request.session["user"] = payload.login
+        return {"ok": True}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/api/logout")
+async def api_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
 
 # ─── Static ───────────────────────────────────────────────────────────────────
 

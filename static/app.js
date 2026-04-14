@@ -1,5 +1,19 @@
 // OPI Monitor — app.js
 
+function doLogout() {
+  fetch('/api/logout', {method: 'POST'}).then(function() {
+    window.location.href = '/login';
+  });
+}
+
+// Redirect to login on 401
+function authFetch(url, opts) {
+  return fetch(url, opts).then(function(r) {
+    if (r.status === 401) { window.location.href = '/login'; throw new Error('unauth'); }
+    return r;
+  });
+}
+
 function toast(msg, type) {
   var el = document.getElementById('toast');
   el.textContent = msg;
@@ -10,7 +24,7 @@ function toast(msg, type) {
 }
 
 function post(url) {
-  return fetch(url, {method: 'POST'}).then(function(r) { return r.json(); });
+  return authFetch(url, {method: 'POST'}).then(function(r) { return r.json(); });
 }
 
 function phoneReboot() {
@@ -52,7 +66,7 @@ function setClass(id, cls) {
 }
 
 function loadStats() {
-  fetch('/api/stats')
+  authFetch('/api/stats')
     .then(function(r) { return r.json(); })
     .then(function(d) {
       var bat = d.battery;
@@ -109,7 +123,7 @@ function loadStats() {
 function loadSms() {
   var list = document.getElementById('sms-list');
   list.innerHTML = '<div style="color:var(--dim);font-family:var(--mono);font-size:.8rem">Loading...</div>';
-  fetch('/api/sms')
+  authFetch('/api/sms')
     .then(function(r) { return r.json(); })
     .then(function(msgs) {
       if (!msgs.length) {
@@ -134,7 +148,7 @@ function loadSms() {
 
 function clearSms() {
   if (!confirm('Удалить все SMS из inbox?')) return;
-  fetch('/api/sms/clear', {method: 'POST'})
+  authFetch('/api/sms/clear', {method: 'POST'})
     .then(function(r) { return r.json(); })
     .then(function() {
       toast('SMS удалены');
@@ -147,7 +161,7 @@ function sendSms() {
   var to   = document.getElementById('sms-to').value.trim();
   var body = document.getElementById('sms-body').value.trim();
   if (!to || !body) { toast('Fill number and text', 'err'); return; }
-  fetch('/api/sms/send', {
+  authFetch('/api/sms/send', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({to: to, body: body})
@@ -169,7 +183,7 @@ function sendUssd(code) {
   var el = document.getElementById('ussd-response');
   el.style.color = 'var(--dim)';
   el.textContent = 'Sending ' + code + ' ... (~5 sec)';
-  fetch('/api/ussd', {
+  authFetch('/api/ussd', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({code: code})
