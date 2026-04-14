@@ -11,17 +11,19 @@ import os
 import json
 import secrets
 import hashlib
+import hmac as _hmac
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import uvicorn
 
 STATIC_DIR  = os.path.join(os.path.dirname(__file__), "static")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "opi-conf.json")
+COOKIE_NAME = "opi_session"
+SESSION_TTL = 7 * 24 * 3600  # 7 days
 
 # ─── Config / Auth helpers ────────────────────────────────────────────────────
 
@@ -29,9 +31,9 @@ def _init_config() -> dict:
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
             return json.load(f)
-    salt       = secrets.token_hex(16)
-    pw_hash    = hashlib.pbkdf2_hmac("sha256", b"admin", salt.encode(), 100_000).hex()
-    config     = {
+    salt    = secrets.token_hex(16)
+    pw_hash = hashlib.pbkdf2_hmac("sha256", b"admin", salt.encode(), 100_000).hex()
+    config  = {
         "login":         "admin",
         "password_hash": f"{salt}:{pw_hash}",
         "secret_key":    secrets.token_hex(32),
@@ -51,6 +53,25 @@ def check_password(password: str) -> bool:
     computed = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
     return secrets.compare_digest(computed, stored)
 
+def make_token(user: str) -> str:
+    ts  = str(int(time.time()))
+    msg = f"{user}:{ts}".encode()
+    sig = _hmac.new(CONFIG["secret_key"].encode(), msg, hashlib.sha256).hexdigest()
+    return f"{user}:{ts}:{sig}"
+
+def verify_token(token: str) -> str | None:
+    try:
+        user, ts, sig = token.split(":", 2)
+        if int(time.time()) - int(ts) > SESSION_TTL:
+            return None
+        msg      = f"{user}:{ts}".encode()
+        expected = _hmac.new(CONFIG["secret_key"].encode(), msg, hashlib.sha256).hexdigest()
+        if _hmac.compare_digest(sig, expected):
+            return user
+    except Exception:
+        pass
+    return None
+
 # ─── Auth middleware ───────────────────────────────────────────────────────────
 
 _PUBLIC = {"/login", "/api/login"}
@@ -60,16 +81,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path.startswith("/static") or path in _PUBLIC:
             return await call_next(request)
-        if not request.session.get("user"):
+        token = request.cookies.get(COOKIE_NAME)
+        if not (token and verify_token(token)):
             if path.startswith("/api/"):
                 return Response("Unauthorized", status_code=401)
             return RedirectResponse("/login")
         return await call_next(request)
 
 app = FastAPI(title="OPI Monitor")
-# SessionMiddleware must wrap AuthMiddleware → add Auth first, then Session
 app.add_middleware(AuthMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=CONFIG["secret_key"], session_cookie="opi_session")
 
 # ─── ADB helpers ──────────────────────────────────────────────────────────────
 
@@ -273,17 +293,22 @@ class LoginPayload(BaseModel):
     password: str
 
 @app.post("/api/login")
-async def api_login(payload: LoginPayload, request: Request):
+async def api_login(payload: LoginPayload):
     cfg = json.load(open(CONFIG_FILE))
     if payload.login == cfg["login"] and check_password(payload.password):
-        request.session["user"] = payload.login
-        return {"ok": True}
+        resp = Response(content='{"ok":true}', media_type="application/json")
+        resp.set_cookie(
+            COOKIE_NAME, make_token(payload.login),
+            max_age=SESSION_TTL, httponly=True, samesite="strict",
+        )
+        return resp
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.post("/api/logout")
-async def api_logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
+async def api_logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
 
 # ─── Static ───────────────────────────────────────────────────────────────────
 
