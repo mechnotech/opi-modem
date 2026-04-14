@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPI Monitor</title>
+<link rel="stylesheet" href="/static/style.css?v=2">
+</head>
+<body>
+
+<header>
+  <div class="logo">OPI<span>/</span>MONITOR <span style="font-size:.7rem">v1.1</span></div>
+  <div><span id="status-dot"></span><span id="clock">--:--:--</span></div>
+</header>
+
+<div class="controls">
+  <span class="btn-group-label">PHONE:</span>
+  <button class="btn" onclick="phoneReboot()">&#x27F3; REBOOT</button>
+  <span class="btn-group-label" style="margin-left:12px">OPI:</span>
+  <button class="btn warn-btn" onclick="opiReboot()">&#x27F3; REBOOT</button>
+  <button class="btn danger"   onclick="opiPoweroff()">&#x23FB; POWEROFF</button>
+</div>
+
+<div class="grid">
+
+  <!-- Battery -->
+  <div class="panel">
+    <div class="panel-title">// BATTERY</div>
+    <div class="bat-bar-wrap"><div id="bat-bar" class="bat-bar" style="width:0%"></div></div>
+    <div id="bat-pct" class="stat-value accent" style="font-size:2rem;line-height:1.2">--%</div>
+    <div style="margin-top:12px">
+      <div class="stat-row"><span class="stat-label">Temperature</span><span class="stat-value" id="bat-temp">--</span></div>
+      <div class="stat-row"><span class="stat-label">Current</span>    <span class="stat-value" id="bat-current">--</span></div>
+      <div class="stat-row"><span class="stat-label">Voltage</span>    <span class="stat-value" id="bat-voltage">--</span></div>
+      <div class="stat-row"><span class="stat-label">Charging</span>   <span class="stat-value" id="bat-charging">--</span></div>
+      <div class="stat-row"><span class="stat-label">Status</span>     <span class="stat-value" id="bat-status">--</span></div>
+    </div>
+  </div>
+
+  <!-- Signal -->
+  <div class="panel">
+    <div class="panel-title">// LTE SIGNAL</div>
+    <div class="stat-row" style="margin-bottom:12px;border:none">
+      <div>
+        <div class="stat-value accent" id="sig-operator" style="font-size:1.2rem">--</div>
+        <div class="stat-label"        id="sig-band">EARFCN --</div>
+      </div>
+      <div class="sig-bars" id="sig-bars">
+        <div class="sig-bar" style="height:6px"></div>
+        <div class="sig-bar" style="height:10px"></div>
+        <div class="sig-bar" style="height:14px"></div>
+        <div class="sig-bar" style="height:18px"></div>
+        <div class="sig-bar" style="height:24px"></div>
+      </div>
+    </div>
+    <div class="stat-row"><span class="stat-label">RSRP</span><span class="stat-value" id="sig-rsrp">--</span></div>
+    <div class="stat-row"><span class="stat-label">RSRQ</span><span class="stat-value" id="sig-rsrq">--</span></div>
+    <div class="stat-row"><span class="stat-label">RSSI</span><span class="stat-value" id="sig-rssi">--</span></div>
+  </div>
+
+  <!-- Traffic -->
+  <div class="panel">
+    <div class="panel-title">// TRAFFIC (<span id="wan-iface">WAN</span>)</div>
+    <div class="traffic-row">
+      <div>
+        <div class="stat-label">&#x2193; RECEIVED</div>
+        <div class="traffic-big" id="rx-mb">--</div>
+        <div class="traffic-unit">MB</div>
+      </div>
+      <div>
+        <div class="stat-label">&#x2191; SENT</div>
+        <div class="traffic-big" id="tx-mb" style="color:var(--accent2)">--</div>
+        <div class="traffic-unit">MB</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPI -->
+  <div class="panel">
+    <div class="panel-title">// ORANGE PI</div>
+    <div class="stat-row"><span class="stat-label">Uptime</span>  <span class="stat-value accent" id="opi-uptime">--</span></div>
+    <div class="stat-row"><span class="stat-label">CPU temp</span><span class="stat-value" id="opi-temp">--</span></div>
+    <div class="stat-row"><span class="stat-label">Load avg</span><span class="stat-value" id="opi-load">--</span></div>
+  </div>
+
+</div>
+
+<!-- USSD -->
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-title">// USSD (MegaFon)</div>
+  <div class="ussd-btns">
+    <button class="btn" onclick="sendUssd('*100#')">*100# Balance</button>
+    <button class="btn" onclick="sendUssd('*100*3#')">*100*3# Remains</button>
+    <button class="btn" onclick="sendUssd('*558#')">*558# Internet</button>
+  </div>
+  <div class="ussd-row">
+    <input type="text" id="ussd-code" class="form-input" placeholder="*100#">
+    <button class="btn" onclick="sendUssd(document.getElementById('ussd-code').value)">&#x25B6; SEND</button>
+  </div>
+  <div id="ussd-response"></div>
+</div>
+
+<!-- SMS -->
+<div class="panel">
+  <div class="panel-title">// INBOX SMS
+    <span style="float:right;display:flex;gap:6px">
+      <button class="btn" onclick="loadSms()" style="padding:4px 10px;font-size:.65rem">REFRESH</button>
+      <button class="btn danger" onclick="clearSms()" style="padding:4px 10px;font-size:.65rem">CLEAR</button>
+    </span>
+  </div>
+  <div class="sms-list" id="sms-list">
+    <div style="color:var(--dim);font-family:var(--mono);font-size:.8rem">Loading...</div>
+  </div>
+  <div class="sms-form">
+    <input    type="text" id="sms-to"   class="form-input" placeholder="+7...">
+    <textarea              id="sms-body" class="form-input" rows="2" placeholder="Message text..."></textarea>
+    <button class="btn" onclick="sendSms()">&#x25B6; SEND SMS</button>
+  </div>
+</div>
+
+<div id="last-update"></div>
+<div id="toast"></div>
+
+<script src="/static/app.js?v=2"></script>
+</body>
+</html>
